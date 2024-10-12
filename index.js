@@ -58,15 +58,16 @@ const assembleMessage = (taskEvents, yesterdayEvents, todayEvents) => {
 	const previousDayName = isMondayToday() ? "Friday" : "Yesterday";
 
 	const githubMessages = taskEvents.map(e => {
+		let typeDescription = ""
 		if (e.type === "feature") {
-			return `${bullet}Worked on ${e.taskId}\n${tab}${bullet}${e.gptSummary}`;
+			typeDescription = "Worked on";
+		} else if (e.type === "master") {
+			typeDescription = "Released to prod";
+		} else if (e.type === "staging") {
+			typeDescription = "Released to Staging QA";
 		}
-		if (e.type === "master") {
-			return `${bullet}Released to prod ${e.taskId}\n${tab}${bullet}${e.gptSummary}`;
-		}
-		if (e.type === "staging") {
-			return `${bullet}Released to Staging QA: ${e.taskId}\n${tab}${bullet}${e.gptSummary}`;
-		}
+		const gptSummarySection = e.gptSummary ? `\n${tab}${bullet}${e.gptSummary}` : "";
+		return `${bullet}${typeDescription} ${e.taskId} ${gptSummarySection}`;
 	}).join("\n");
 
 	const yesterDayEventsMessage = yesterdayEvents.map(e => `${bullet}Attended ${e.description.trim()} meeting`).join("\n");
@@ -93,11 +94,9 @@ const getCalendarEvents = async (dateStart, yesterdayEod, dateEnd) => {
 			today: []
 		}
 	}
-
 	const authClient = await googleCalendar.authorizeGoogleOAuth();
 	const yesterdayCalendarEvents = await googleCalendar.listEvents(authClient, dateStart, yesterdayEod);
 	const todayCalendarEvents = await googleCalendar.listEvents(authClient, yesterdayEod, dateEnd);
-
 	return {
 		yesterday: yesterdayCalendarEvents,
 		today: todayCalendarEvents
@@ -127,13 +126,9 @@ const main = async () => {
 		process.exit(1);
 	}
 
-	console.log("Getting events from ", dateStart, "to", dateEnd);
-
 	console.log("Working, please wait...");
 
-
 	const githubEvents = integrations.github ? await github.listEvents(dateStart, dateEnd) : [];
-
 	const githubEventsByTask = mergeGithubEventsByTask(githubEvents);
 
 	const taskEvents = [];
@@ -148,13 +143,22 @@ const main = async () => {
 			type = "feature";
 		}
 
-		const linearTask = await linear.fetchTask(taskId);
-
-		const prompt = `Given a task with the title "${linearTask.title}" 
-		and the description "${linearTask.description}", and the following commit history of work done on it, 
-		write a short but comprehensible one-line summary of the work done on these commits: \n${data.commits.join("\n")}`;
-
-		const gptSummary = await openAi.askGpt(prompt);
+		let gptSummary;
+		if (integrations.openAi) {
+			let prompt;
+			if (integrations.linear) {
+				const linearTask = await linear.fetchTask(taskId);
+				prompt = `Given a task with the title "${linearTask.title}" 
+				and the description "${linearTask.description}", and the following commit history of work done on it, 
+				write a short but comprehensible one-line summary of the work done on these commits: 
+				${data.commits.join("\n")}`;
+			} else {
+				prompt = `Given the following commit history of work done on a certain task, 
+				write a short but comprehensible one-line summary of the work done: 
+				${data.commits.join("\n")}`;
+			}
+			gptSummary = await openAi.askGpt(prompt);
+		}
 
 		taskEvents.push({
 			taskId,
@@ -162,7 +166,6 @@ const main = async () => {
 			commits: data.commits,
 			type
 		});
-
 	}
 
 	const calendarEvents = await getCalendarEvents(dateStart, yesterdayEod, dateEnd);
@@ -171,13 +174,12 @@ const main = async () => {
 	console.log("MESSAGE:\n");
 	console.log(message);
 
-	// return;
-	console.log("\nASKING GPT\n");
+	if (integrations.openAi) {
+		console.log("\nASKING GPT\n");
 
-	const gptResponse = await openAi.askGpt(`This is a message Im going to post in the company's slack channel. Format it and add more details. '${message}'`);
-	console.log(gptResponse);
-
+		const gptResponse = await openAi.askGpt(`This is a message Im going to post in the company's slack channel. Format it and add more details. Keep the overall structure and separate the previous and current day sections  '${message}'`);
+		console.log(gptResponse);
+	}
 };
 
-
-main();
+main().then(() => process.exit(0)).catch(() => process.exit(1))
