@@ -14,7 +14,7 @@ const { exec } = require('child_process');
 
 const isMondayToday = () => now.getDay() === 1;
 
-const now = new Date('2024-10-10T00:00:00Z');
+const now = new Date('2024-10-05T00:00:00Z');
 // const now = new Date();
 
 const readBooleanConfig = (rawConfig) => {
@@ -74,7 +74,6 @@ const assembleMessage = (taskEvents, yesterdayEvents, todayEvents) => {
 	const todayEventsMessage = todayEvents.map(e => `${bullet}Attend ${e.description.trim()} meeting`).join("\n");
 
 	return `${greeting}\n${previousDayName}:\n${githubMessages}\n${yesterDayEventsMessage}\nToday:\n${todayEventsMessage}`;
-
 };
 
 const logIntegrationStatus = (integrations) => {
@@ -111,7 +110,24 @@ const checkEnvFile = async () => {
 		process.exit(1);
 	});
 	return false;
-}
+};
+
+const getGptSummaryForTask = async (taskId, commits) => {
+	if (!integrations.openAi) return "";
+	let prompt;
+	if (integrations.linear) {
+		const linearTask = await linear.fetchTask(taskId);
+		prompt = `Given a task with the title "${linearTask.title}" 
+				and the description "${linearTask.description}", and the following commit history of work done on it, 
+				write a short but comprehensible one-line summary of the work done on these commits: 
+				${commits.join("\n")}`;
+	} else {
+		prompt = `Given the following commit history of work done on a certain task, 
+				write a short but comprehensible one-line summary of the work done: 
+				${commits.join("\n")}`;
+	}
+	return openAi.askGpt(prompt);
+};
 
 const main = async () => {
 	if (!await checkEnvFile()) return;
@@ -143,26 +159,9 @@ const main = async () => {
 			type = "feature";
 		}
 
-		let gptSummary;
-		if (integrations.openAi) {
-			let prompt;
-			if (integrations.linear) {
-				const linearTask = await linear.fetchTask(taskId);
-				prompt = `Given a task with the title "${linearTask.title}" 
-				and the description "${linearTask.description}", and the following commit history of work done on it, 
-				write a short but comprehensible one-line summary of the work done on these commits: 
-				${data.commits.join("\n")}`;
-			} else {
-				prompt = `Given the following commit history of work done on a certain task, 
-				write a short but comprehensible one-line summary of the work done: 
-				${data.commits.join("\n")}`;
-			}
-			gptSummary = await openAi.askGpt(prompt);
-		}
-
 		taskEvents.push({
 			taskId,
-			gptSummary,
+			gptSummary: await getGptSummaryForTask(taskId, data.commits),
 			commits: data.commits,
 			type
 		});
@@ -171,13 +170,12 @@ const main = async () => {
 	const calendarEvents = await getCalendarEvents(dateStart, yesterdayEod, dateEnd);
 
 	const message = assembleMessage(taskEvents, calendarEvents.yesterday, calendarEvents.today);
-	console.log("MESSAGE:\n");
+	console.log("Message:\n");
 	console.log(message);
 
 	if (integrations.openAi) {
-		console.log("\nASKING GPT\n");
-
 		const gptResponse = await openAi.askGpt(`This is a message Im going to post in the company's slack channel. Format it and add more details. Keep the overall structure and separate the previous and current day sections  '${message}'`);
+		console.log("\nGPT processed message:\n");
 		console.log(gptResponse);
 	}
 };
