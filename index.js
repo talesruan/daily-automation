@@ -109,11 +109,17 @@ const main = async () => {
 
 	logIntegrationStatus(integrations);
 
+	if (!integrations.github && !integrations.googleCalendar) {
+		console.log("Both Github and Google Calendar integrations are disabled. Please enable at least one to proceed.");
+		process.exit(1);
+	}
+
 	console.log("Getting events from ", dateStart, "to", dateEnd);
 
 	console.log("Working, please wait...");
 
-	const githubEvents = await github.listEvents(dateStart, dateEnd);
+
+	const githubEvents = integrations.github ? await github.listEvents(dateStart, dateEnd) : [];
 
 	const githubEventsByTask = mergeGithubEventsByTask(githubEvents);
 

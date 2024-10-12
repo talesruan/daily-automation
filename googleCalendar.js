@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const process = require("process");
 const {authenticate} = require('@google-cloud/local-auth');
+const terminal = require("./terminal");
 
 // Do not report these calendar events:
 const EVENTS_BLACKLIST = process.env.EVENTS_BLACKLIST.split(',');
@@ -28,7 +29,6 @@ const loadSavedGoogleCredentialsIfExist = async () => {
  * Serializes credentials to a file compatible with GoogleAuth.fromJSON.
  */
 const saveGoogleCredentials = async client => {
-	console.log("CREDENTIALS_PATH", GOOGLE_CREDENTIALS_PATH);
 	const content = await fs.promises.readFile(GOOGLE_CREDENTIALS_PATH);
 	const keys = JSON.parse(content);
 	const key = keys.installed || keys.web;
@@ -49,11 +49,20 @@ const authorizeGoogleOAuth = async () => {
 	if (client) {
 		return client;
 	}
+
+	if (!fs.existsSync(GOOGLE_CREDENTIALS_PATH)) {
+		console.error(`Google credentials file not found at ${GOOGLE_CREDENTIALS_PATH}. \nPlease configure a google project here: https://developers.google.com/calendar/api/quickstart/nodejs#set-up-environment`);
+		process.exit(1);
+	}
+
+	await terminal.waitWithMessage("You will be redirected to Google login, press Enter to continue...");
+
 	client = await authenticate({
 		scopes: GOOGLE_TOKEN_SCOPES,
 		keyfilePath: GOOGLE_CREDENTIALS_PATH,
 	});
 	if (client.credentials) {
+		console.log("Logged in sucessfully.");
 		await saveGoogleCredentials(client);
 	}
 	return client;
