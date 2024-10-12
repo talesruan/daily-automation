@@ -10,9 +10,10 @@ const googleCalendar = require("./googleCalendar.js");
 const openAi = require("./openAi.js");
 const linear = require("./linear");
 
-const now = new Date();
-
 const isMondayToday = () => now.getDay() === 1;
+
+// const now = new Date('2024-10-10T00:00:00Z');
+const now = new Date();
 
 const mergeGithubEventsByTask = (events) => {
 	const tasks = {};
@@ -28,23 +29,22 @@ const mergeGithubEventsByTask = (events) => {
 	return tasks;
 };
 
-const assembleMessage = (githubEvents, yesterdayEvents, todayEvents) => {
+const assembleMessage = (taskEvents, yesterdayEvents, todayEvents) => {
 	const greeting = "Morning!";
 	const bullet = "- "
 	const tab = "\t";
 
 	const previousDayName = isMondayToday() ? "Friday" : "Yesterday";
 
-	const githubMessages = githubEvents.map(e => {
-		const commitDetails = e.commits.map(c => `${tab}${bullet}${c}`).join("\n");
+	const githubMessages = taskEvents.map(e => {
 		if (e.type === "feature") {
-			return `${bullet}Worked on ${e.tasks[0]}`;
+			return `${bullet}Worked on ${e.taskId}\n${tab}${bullet}${e.gptSummary}`;
 		}
 		if (e.type === "master") {
-			return `${bullet}Released to prod ${e.tasks.join(", ")}`;
+			return `${bullet}Released to prod ${e.taskId}\n${tab}${bullet}${e.gptSummary}`;
 		}
 		if (e.type === "staging") {
-			return `${bullet}Released to Staging QA: ${e.tasks.join(", ")}`;
+			return `${bullet}Released to Staging QA: ${e.taskId}\n${tab}${bullet}${e.gptSummary}`;
 		}
 	}).join("\n");
 
@@ -62,12 +62,15 @@ const main = async () => {
 
 	console.log("Getting events from ", dateStart, "to", dateEnd);
 
+	console.log("Working, please wait...");
+
 	const githubEvents = await github.listEvents(dateStart, dateEnd);
 
 	const githubEventsByTask = mergeGithubEventsByTask(githubEvents);
+
+	const taskEvents = [];
 	for (const taskId in githubEventsByTask) {
 		const data = githubEventsByTask[taskId];
-		console.log("data", JSON.stringify(data, null, 2));
 		let type;
 		if (data.types.includes("master")) {
 			type = "master";
@@ -81,26 +84,33 @@ const main = async () => {
 
 		const prompt = `Given a task with the title "${linearTask.title}" 
 		and the description "${linearTask.description}", and the following commit history of work done on it, 
-		write a short but comprehensible one-line summary of the work done. Commit history: \n${data.commits.join("\n")}`;
+		write a short but comprehensible one-line summary of the work done on these commits: \n${data.commits.join("\n")}`;
 
+		const gptSummary = await openAi.askGpt(prompt);
 
-		console.log("prompt", prompt);
+		taskEvents.push({
+			taskId,
+			gptSummary,
+			commits: data.commits,
+			type
+		});
 
-		const x = await openAi.askGpt(prompt);
-		console.log(x);
 	}
+
+	// console.log("taskEvents", JSON.stringify(taskEvents, null, 2));
 
 	const authClient = await googleCalendar.authorizeGoogleOAuth();
 	const yesterdayCalendarEvents = await googleCalendar.listEvents(authClient, dateStart, yesterdayEod);
 	const todayCalendarEvents = await googleCalendar.listEvents(authClient, yesterdayEod, dateEnd);
 
+	const message = assembleMessage(taskEvents, yesterdayCalendarEvents, todayCalendarEvents);
 	console.log("MESSAGE:\n");
-	console.log(assembleMessage(githubEvents, yesterdayCalendarEvents, todayCalendarEvents));
+	console.log(message);
 
-	return;
+	// return;
 	console.log("\nASKING GPT\n");
 
-	const gptResponse = await openAi.askGpt(`This is a message Im going to post in the company's slack channel. Format it and add more details. '${assembleMessage(githubEvents, yesterdayCalendarEvents, todayCalendarEvents)}'`);
+	const gptResponse = await openAi.askGpt(`This is a message Im going to post in the company's slack channel. Format it and add more details. '${message}'`);
 	console.log(gptResponse);
 
 };
