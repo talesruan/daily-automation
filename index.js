@@ -12,8 +12,27 @@ const linear = require("./linear");
 
 const isMondayToday = () => now.getDay() === 1;
 
-// const now = new Date('2024-10-10T00:00:00Z');
-const now = new Date();
+const now = new Date('2024-10-10T00:00:00Z');
+// const now = new Date();
+
+const readBooleanConfig = (rawConfig) => {
+	return rawConfig && rawConfig.toUpperCase() === "TRUE";
+}
+
+const integrations = {
+	github: readBooleanConfig(process.env.ENABLE_GITHUB_INTEGRATION),
+	linear: readBooleanConfig(process.env.ENABLE_LINEAR_INTEGRATION),
+	openAi: readBooleanConfig(process.env.ENABLE_OPEN_AI_INTEGRATION),
+	googleCalendar: readBooleanConfig(process.env.ENABLE_GOOGLE_CALENDAR_INTEGRATION),
+};
+
+const greenString = (string) => {
+	return `\x1b[42m\x1b[97m${string}\x1b[0m`;
+}
+
+const redString = (string) => {
+	return `\x1b[41m\x1b[97m${string}\x1b[0m`;
+};
 
 const mergeGithubEventsByTask = (events) => {
 	const tasks = {};
@@ -55,10 +74,40 @@ const assembleMessage = (taskEvents, yesterdayEvents, todayEvents) => {
 
 };
 
+const logIntegrationStatus = (integrations) => {
+	const on = greenString("  ON   ");
+	const off =  redString("  OFF  ");
+	console.log("Enabled integrations: ");
+	for (const key in integrations) {
+		const status = integrations[key];
+		console.log(`${key.padEnd(15, " ")}${status ? on : off}`);
+	}
+};
+
+const getCalendarEvents = async (dateStart, yesterdayEod, dateEnd) => {
+	if (!integrations.googleCalendar) {
+		return {
+			yesterday: [],
+			today: []
+		}
+	}
+
+	const authClient = await googleCalendar.authorizeGoogleOAuth();
+	const yesterdayCalendarEvents = await googleCalendar.listEvents(authClient, dateStart, yesterdayEod);
+	const todayCalendarEvents = await googleCalendar.listEvents(authClient, yesterdayEod, dateEnd);
+
+	return {
+		yesterday: yesterdayCalendarEvents,
+		today: todayCalendarEvents
+	}
+}
+
 const main = async () => {
 	const dateStart = startOfDay(subDays(now, isMondayToday() ? 3 : 1));
 	const yesterdayEod = endOfDay(subDays(now, 1));
 	const dateEnd = endOfDay(now);
+
+	logIntegrationStatus(integrations);
 
 	console.log("Getting events from ", dateStart, "to", dateEnd);
 
@@ -97,13 +146,9 @@ const main = async () => {
 
 	}
 
-	// console.log("taskEvents", JSON.stringify(taskEvents, null, 2));
+	const calendarEvents = await getCalendarEvents(dateStart, yesterdayEod, dateEnd);
 
-	const authClient = await googleCalendar.authorizeGoogleOAuth();
-	const yesterdayCalendarEvents = await googleCalendar.listEvents(authClient, dateStart, yesterdayEod);
-	const todayCalendarEvents = await googleCalendar.listEvents(authClient, yesterdayEod, dateEnd);
-
-	const message = assembleMessage(taskEvents, yesterdayCalendarEvents, todayCalendarEvents);
+	const message = assembleMessage(taskEvents, calendarEvents.yesterday, calendarEvents.today);
 	console.log("MESSAGE:\n");
 	console.log(message);
 
