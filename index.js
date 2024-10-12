@@ -9,6 +9,8 @@ const github = require("./github.js");
 const googleCalendar = require("./googleCalendar.js");
 const openAi = require("./openAi.js");
 const linear = require("./linear");
+const terminal = require("./terminal");
+const { exec } = require('child_process');
 
 const isMondayToday = () => now.getDay() === 1;
 
@@ -100,9 +102,20 @@ const getCalendarEvents = async (dateStart, yesterdayEod, dateEnd) => {
 		yesterday: yesterdayCalendarEvents,
 		today: todayCalendarEvents
 	}
+};
+
+const checkEnvFile = async () => {
+	if (fs.existsSync(".env")) return true;
+	await terminal.waitWithMessage("Press ENTER to setup the .env file");
+	fs.copyFileSync('.env.template', '.env');
+	exec('code .env', (err) => {
+		process.exit(1);
+	});
+	return false;
 }
 
 const main = async () => {
+	if (!await checkEnvFile()) return;
 	const dateStart = startOfDay(subDays(now, isMondayToday() ? 3 : 1));
 	const yesterdayEod = endOfDay(subDays(now, 1));
 	const dateEnd = endOfDay(now);

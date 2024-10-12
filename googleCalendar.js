@@ -6,7 +6,7 @@ const {authenticate} = require('@google-cloud/local-auth');
 const terminal = require("./terminal");
 
 // Do not report these calendar events:
-const EVENTS_BLACKLIST = process.env.EVENTS_BLACKLIST.split(',');
+const EVENTS_BLACKLIST = (process.env.EVENTS_BLACKLIST || "").split(',');
 // If modifying these scopes, delete token.json.
 const GOOGLE_TOKEN_SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
 const GOOGLE_TOKEN_PATH = path.join(process.cwd(), 'googleUserToken.json'); // user token saved here
