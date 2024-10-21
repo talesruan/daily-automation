@@ -10,6 +10,7 @@ Motivation: It's very common for me to get so immersed on the current task that 
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Usage](#usage)
+- [Limitations](#limitations)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -66,6 +67,33 @@ Motivation: It's very common for me to get so immersed on the current task that 
     ```
 
 2. For Google Calendar integration, you will be prompted to log in to your Google account the first time you run the application.
+
+3. The message is generated in the following format:
+```
+<Greeting>
+
+Yesterday:
+- Worked on <TASK_1> 
+        - LLM-generated description of the work based on the commit history 
+          and task description on linear
+- Worked on <TASK_N> 
+        - ...
+- Attended X meeting
+- Attended Y meeting
+- Reviewed N PRs
+
+Today:
+- Attend Z meeting
+```
+
+## Limitations
+
+Only the obvious stuff:
+
+- Commits that were not commited and pushed won't be included
+- Can sync with a single calendar only
+- Tasks must the in the format ```ENG-<digits>```
+- Task Id must be included in the branch name.
 
 ## Contributing
 
