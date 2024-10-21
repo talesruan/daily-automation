@@ -30,16 +30,20 @@ const getTaskListFromString = (string) => {
 };
 
 const parseEvent = (event) => {
-	// if (event.type === "PullRequestReviewEvent" || event.type === "PullRequestEvent") {
-	// // can use these to track PR reviews
-	// 	return;
-	// }
-
-	if (event.type !== "PushEvent") {
+	if (event.type !== "PushEvent" && event.type !== "PullRequestReviewEvent") {
 		return;
 	}
+
 	if (!event.org || event.org.login !== GITHUB_ORG) {
 		return;
+	}
+
+	if (event.type === "PullRequestReviewEvent") {
+		return {
+			type: "review",
+			tasks: getTaskListFromString(event.payload.pull_request.head.label),
+			url: event.payload.pull_request.html_url
+		}
 	}
 	const fullBranchRef = event.payload.ref;
 	const branchName = fullBranchRef.replace(/^refs\/heads\//, '');

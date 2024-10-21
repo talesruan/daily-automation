@@ -14,8 +14,8 @@ const { exec } = require('child_process');
 
 const isMondayToday = () => now.getDay() === 1;
 
-const now = new Date('2024-10-05T00:00:00Z');
-// const now = new Date();
+// const now = new Date('2024-10-15T12:00:00Z');
+const now = new Date();
 
 const readBooleanConfig = (rawConfig) => {
 	return rawConfig && rawConfig.toUpperCase() === "TRUE";
@@ -38,7 +38,8 @@ const redString = (string) => {
 
 const mergeGithubEventsByTask = (events) => {
 	const tasks = {};
-	for (const event of events) {
+	const commitEvents = events.filter(e => e.type !== "review");
+	for (const event of commitEvents) {
 		for (const taskId of event.tasks) {
 			if (!tasks[taskId]) {
 				tasks[taskId] = {commits: [], types: []};
@@ -50,7 +51,13 @@ const mergeGithubEventsByTask = (events) => {
 	return tasks;
 };
 
-const assembleMessage = (taskEvents, yesterdayEvents, todayEvents) => {
+const countReviews = (githubEvents) => {
+	const reviewEvents = githubEvents.filter(e => e.type === "review");
+	const prsReviewed = reviewEvents.map(e => e.url);
+	return new Set(prsReviewed).size;
+};
+
+const assembleMessage = (taskEvents, yesterdayEvents, todayEvents, reviewEvents) => {
 	const greeting = "Morning!";
 	const bullet = "- "
 	const tab = "\t";
@@ -73,7 +80,10 @@ const assembleMessage = (taskEvents, yesterdayEvents, todayEvents) => {
 	const yesterDayEventsMessage = yesterdayEvents.map(e => `${bullet}Attended ${e.description.trim()} meeting`).join("\n");
 	const todayEventsMessage = todayEvents.map(e => `${bullet}Attend ${e.description.trim()} meeting`).join("\n");
 
-	return `${greeting}\n${previousDayName}:\n${githubMessages}\n${yesterDayEventsMessage}\nToday:\n${todayEventsMessage}`;
+	const numberOfReviews = countReviews(reviewEvents);
+	const reviewMessage = `${bullet}Reviewed ${numberOfReviews} PRs`;
+
+	return `${greeting}\n${previousDayName}:\n${githubMessages}\n${yesterDayEventsMessage}${numberOfReviews > 0 ? `\n${reviewMessage}` : ""}\nToday:\n${todayEventsMessage}`;
 };
 
 const logIntegrationStatus = (integrations) => {
@@ -145,6 +155,15 @@ const main = async () => {
 	console.log("Working, please wait...");
 
 	const githubEvents = integrations.github ? await github.listEvents(dateStart, dateEnd) : [];
+
+	const numberOrReviews = countReviews(githubEvents);
+
+	const reviewEvents = githubEvents.filter(e => e.type === "review");
+	const prsReviewed = reviewEvents.map(e => e.url);
+
+	console.log(`Reviewed ${numberOrReviews} PRs.`);
+	prsReviewed.forEach(x => console.log(x));
+
 	const githubEventsByTask = mergeGithubEventsByTask(githubEvents);
 
 	const taskEvents = [];
@@ -169,15 +188,19 @@ const main = async () => {
 
 	const calendarEvents = await getCalendarEvents(dateStart, yesterdayEod, dateEnd);
 
-	const message = assembleMessage(taskEvents, calendarEvents.yesterday, calendarEvents.today);
+	const message = assembleMessage(taskEvents, calendarEvents.yesterday, calendarEvents.today, reviewEvents);
 	console.log("Message:\n");
 	console.log(message);
 
 	if (integrations.openAi) {
-		const gptResponse = await openAi.askGpt(`This is a message Im going to post in the company's slack channel. Format it and add more details. Keep the overall structure and separate the previous and current day sections  '${message}'`);
+		const gptResponse = await openAi.askGpt(`This is a message Im going to post in the company's slack channel. Format it and make it clearer if possible, but do Keep the same bullet points structure. Do NOT speculate about anything. Improve the greeting message and add emojis if possible.  '${message}'`);
 		console.log("\nGPT processed message:\n");
 		console.log(gptResponse);
 	}
 };
 
-main().then(() => process.exit(0)).catch(() => process.exit(1))
+main().then(() => process.exit(0)).catch((error) => {
+	console.error(error);
+	console.log("Finished with an error");
+	return process.exit(1);
+})
