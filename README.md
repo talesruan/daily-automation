@@ -76,7 +76,7 @@ Yesterday:
 - Worked on <TASK_1> 
         - LLM-generated description of the work based on the commit history 
           and task description on linear
-- Worked on <TASK_N> 
+- Released to prod/staging <TASK_N> 
         - ...
 - Attended X meeting
 - Attended Y meeting
@@ -94,6 +94,7 @@ Only the obvious stuff:
 - Can sync with a single calendar only
 - Tasks must the in the format ```ENG-<digits>```
 - Task Id must be included in the branch name.
+- The script can't really guess what you plan to do today. It can only include the meetings you have scheduled.
 
 ## Contributing
 
