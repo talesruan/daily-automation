@@ -76,19 +76,28 @@ const listEvents = async (auth, dateStart, dateEnd) => {
 	const timeMin = dateStart.toISOString();
 	const timeMax = dateEnd.toISOString();
 	const calendar = google.calendar({version: 'v3', auth});
-	const res = await calendar.events.list({
-		calendarId: 'primary',
-		timeMin: timeMin,
-		timeMax: timeMax,
-		maxResults: 20,
-		singleEvents: true,
-		orderBy: 'startTime',
-	});
-	const events = res.data.items;
-	return events.map(event => ({
-		startAt: event.start.dateTime || event.start.date,
-		description: event.summary,
-	})).filter(e => !EVENTS_BLACKLIST.includes(e.description));
+	try {
+		const res = await calendar.events.list({
+			calendarId: 'primary',
+			timeMin: timeMin,
+			timeMax: timeMax,
+			maxResults: 20,
+			singleEvents: true,
+			orderBy: 'startTime',
+		});
+		const events = res.data.items;
+		return events.map(event => ({
+			startAt: event.start.dateTime || event.start.date,
+			description: event.summary,
+		})).filter(e => !EVENTS_BLACKLIST.includes(e.description));
+	} catch (error) {
+		if (error?.response?.data?.error === "invalid_grant")  {
+			await fs.promises.unlink(GOOGLE_TOKEN_PATH);
+			throw new Error("Google token expired. Run the script again to re-login.");
+		}
+		throw error;
+	}
+
 };;
 
 module.exports = {listEvents, authorizeGoogleOAuth };
