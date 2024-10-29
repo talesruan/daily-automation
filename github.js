@@ -90,7 +90,8 @@ const parseEvent = (event) => {
 				return {
 					type: "staging",
 					branchName,
-					commits: descriptiveCommitMessages
+					commits: descriptiveCommitMessages,
+					tasks: []
 				}
 			}
 		} else {
