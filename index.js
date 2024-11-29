@@ -14,7 +14,7 @@ const { exec } = require('child_process');
 
 const isMondayToday = () => now.getDay() === 1;
 
-// const now = new Date('2024-10-15T12:00:00Z');
+// const now = new Date('2024-11-20T12:00:00Z');
 const now = new Date();
 
 const readBooleanConfig = (rawConfig) => {

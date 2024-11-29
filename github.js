@@ -6,7 +6,7 @@ const GITHUB_USERNAME = process.env.GITHUB_USERNAME;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_ORG = process.env.GITHUB_ORG;
 
-const isPullRequest = (commitMessage) => {
+const isPullRequestMerge = (commitMessage) => {
 	return commitMessage.includes("Merge pull request #");
 };
 
@@ -29,14 +29,29 @@ const getTaskListFromString = (string) => {
 	return getTaskListFromStringArray([string]);
 };
 
-const parseEvent = (event) => {
-	if (event.type !== "PushEvent" && event.type !== "PullRequestReviewEvent") {
+const getCommitsFromPullRequestEvent = async (event) => {
+	const url = event.payload.pull_request.commits_url;
+	const headers = GITHUB_TOKEN ? { Authorization: `token ${GITHUB_TOKEN}` } : {};
+	try {
+		const response = await axios.get(url, { headers });
+		console.log("response.data", JSON.stringify(response.data, null, 2));
+		return response.data;
+	} catch (error) {
+		console.error('Error fetching GitHub commits:', error);
+		throw error;
+	}
+}
+
+const parseEvent = async (event) => {
+
+	if (event.type !== "PushEvent" && event.type !== "PullRequestReviewEvent" && event.type !== "PullRequestEvent") {
 		return;
 	}
 
 	if (!event.org || event.org.login !== GITHUB_ORG) {
 		return;
 	}
+	const isPREvent = event.type === "PullRequestEvent";
 
 	if (event.type === "PullRequestReviewEvent") {
 		return {
@@ -45,14 +60,26 @@ const parseEvent = (event) => {
 			url: event.payload.pull_request.html_url
 		}
 	}
-	const fullBranchRef = event.payload.ref;
-	const branchName = fullBranchRef.replace(/^refs\/heads\//, '');
+	const fullBranchRef = isPREvent ? event.payload.pull_request.head.ref : event.payload.ref;
+	const branchName = isPREvent ? fullBranchRef : fullBranchRef.replace(/^refs\/heads\//, '');
+
 	const isMaster = branchName === "master" || branchName === "main";
 	const isStaging = branchName === "staging";
+
 	const isFeatureBranch = !isMaster && !isStaging;
-	const commitMessages = event.payload.commits.filter(c => c.author.email === GITHUB_EMAIL).map(c => c.message);
-	const descriptiveCommitMessages = commitMessages.filter(m => !isMergeCommit(m) && !isPullRequest(m));
+
+	let commitsData;
+	if (isPREvent) {
+		const prCommits = await getCommitsFromPullRequestEvent(event);
+		commitsData = prCommits.map(c => c.commit);
+	} else {
+		commitsData = event.payload.commits;
+	}
+
+	const commitMessages = commitsData.filter(c => c.author.email === GITHUB_EMAIL).map(c => c.message);
+	const descriptiveCommitMessages = commitMessages.filter(m => !isMergeCommit(m) && !isPullRequestMerge(m));
 	if (isFeatureBranch) {
+		// TODO: diff message if is in PR
 		return {
 			type: "feature",
 			branchName,
@@ -95,7 +122,14 @@ const parseEvent = (event) => {
 				}
 			}
 		} else {
-			throw new Error("Merge to staging without a PR");
+			console.warn(`Couldn't find the pr that merged to ${branchName}.`);
+			// throw new Error("Merge to staging without a PR");
+			return {
+				type: "staging",
+				branchName,
+				commits: descriptiveCommitMessages,
+				tasks: []
+			}
 		}
 	}
 };
@@ -118,7 +152,14 @@ const listEvents = async (dateStart, dateEnd)=> {
 		const eventDate = new Date(event.created_at);
 		return eventDate >= dateStart && eventDate <= dateEnd;
 	});
-	return filteredEvents.map(e => parseEvent(e)).filter(e => !!e);
+	const parsedEvents = [];
+	for (const e of filteredEvents) {
+		const parsedEvent = await parseEvent(e);
+		if (parsedEvent) {
+			parsedEvents.push(parsedEvent);
+		}
+	}
+	return parsedEvents;
 };
 
 module.exports = { listEvents };
