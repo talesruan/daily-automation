@@ -34,7 +34,6 @@ const getCommitsFromPullRequestEvent = async (event) => {
 	const headers = GITHUB_TOKEN ? { Authorization: `token ${GITHUB_TOKEN}` } : {};
 	try {
 		const response = await axios.get(url, { headers });
-		console.log("response.data", JSON.stringify(response.data, null, 2));
 		return response.data;
 	} catch (error) {
 		console.error('Error fetching GitHub commits:', error);
@@ -76,7 +75,9 @@ const parseEvent = async (event) => {
 		commitsData = event.payload.commits;
 	}
 
+	// TODO: Filter only commits in the relevant time period (yesterday)
 	const commitMessages = commitsData.filter(c => c.author.email === GITHUB_EMAIL).map(c => c.message);
+
 	const descriptiveCommitMessages = commitMessages.filter(m => !isMergeCommit(m) && !isPullRequestMerge(m));
 	if (isFeatureBranch) {
 		// TODO: diff message if is in PR
@@ -98,7 +99,11 @@ const parseEvent = async (event) => {
 		}
 	} else {
 		// staging
-		const lastCommit = event.payload.commits.at(-1);
+		if (event.payload.action === "opened") {
+			console.log("Opened PR to staging but didnt merge yet");
+			return;
+		}
+		const lastCommit = commitsData.at(-1);
 		if (lastCommit.message.includes("Merge pull request #")) {
 			const firstLine = lastCommit.message.split("\\").pop();
 			const tasks = getTaskListFromString(firstLine);

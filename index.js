@@ -10,7 +10,12 @@ const googleCalendar = require("./googleCalendar.js");
 const openAi = require("./openAi.js");
 const linear = require("./linear");
 const terminal = require("./terminal");
+
 const { exec } = require('child_process');
+
+
+// TODO:
+// When theres a merge to staging or prod, disregard commits/tasks not made by the user
 
 const isMondayToday = () => now.getDay() === 1;
 
